@@ -66,7 +66,8 @@ class FrameSource(threading.Thread):
 def orient(img, args):
     if args.rotate:
         img = np.rot90(img, k=args.rotate // 90)
-    if args.flip_h:
+    # Mirrored by default; --flip-h restores the sensor's native left/right.
+    if not args.flip_h:
         img = img[:, ::-1]
     if args.flip_v:
         img = img[::-1, :]
@@ -82,7 +83,11 @@ def main():
     ap.add_argument(
         "--interp", default="bicubic", help="image interpolation, e.g. nearest, bilinear, bicubic"
     )
-    ap.add_argument("--flip-h", action="store_true", help="mirror left/right")
+    ap.add_argument(
+        "--flip-h",
+        action="store_true",
+        help="mirror left/right (the default view is already mirrored; this undoes it)",
+    )
     ap.add_argument("--flip-v", action="store_true", help="mirror top/bottom")
     ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270])
     ap.add_argument("--no-markers", action="store_true", help="hide min/max markers")
@@ -124,6 +129,7 @@ def main():
     (max_mark,) = ax.plot([], [], "+", color="white", ms=14, mew=2)
     (min_mark,) = ax.plot([], [], "x", color="cyan", ms=10, mew=2)
     max_text = ax.text(0, 0, "", color="white", fontsize=10, fontweight="bold")
+    min_text = ax.text(0, 0, "", color="cyan", fontsize=10, fontweight="bold")
     title = ax.set_title("waiting for frames…")
     fig.tight_layout()
 
@@ -137,6 +143,15 @@ def main():
         return ""
 
     ax.format_coord = fmt_coord
+
+    def place(mark, text, img, idx):
+        r, c = np.unravel_index(idx, img.shape)
+        mark.set_data([c], [r])
+        # Keep the label inside the image near the edges.
+        left = c > img.shape[1] - 6
+        text.set_position((c - 0.8 if left else c + 0.8, r + 1.5 if r < 2 else r - 0.8))
+        text.set_horizontalalignment("right" if left else "left")
+        text.set_text(f"{img[r, c]:.1f}°")
 
     def update(f):
         img = orient(np.array(f["temps"]).reshape(HEIGHT, WIDTH), args)
@@ -155,15 +170,8 @@ def main():
         im.set_clim(vmin, vmax)
 
         if not args.no_markers:
-            r, c = np.unravel_index(img.argmax(), img.shape)
-            max_mark.set_data([c], [r])
-            # Keep the label inside the image near the edges.
-            left = c > img.shape[1] - 6
-            max_text.set_position((c - 0.8 if left else c + 0.8, r + 1.5 if r < 2 else r - 0.8))
-            max_text.set_horizontalalignment("right" if left else "left")
-            max_text.set_text(f"{img[r, c]:.1f}°")
-            r, c = np.unravel_index(img.argmin(), img.shape)
-            min_mark.set_data([c], [r])
+            place(max_mark, max_text, img, img.argmax())
+            place(min_mark, min_text, img, img.argmin())
 
         now = time.monotonic()
         state["t"] = [t for t in state["t"] if now - t < 2.0] + [now]

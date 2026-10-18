@@ -4,8 +4,8 @@ Bare-metal Rust (esp-hal) firmware for an ESP32-C3 that reads an MLX90640 32x24
 thermal sensor over I2C and streams calibrated temperatures (°C) over the chip's
 built-in USB-Serial-JTAG port (`/dev/ttyACM0`).
 
-The original ESP32 (Xtensa, UART0 via CH340) version is archived in
-`../mlx90640-esp32-original-esp32.tar.gz`.
+The original ESP32 (Xtensa, UART0 via CH340) version is the first commit in
+this repository's history.
 
 ## Wiring
 
@@ -40,7 +40,7 @@ tools/mlx_reader.py -n 100 -o frames.csv --stats # 100 frames to a file, stats o
 ## Live view
 
 `tools/mlx_view.py` shows the stream as a live matplotlib heatmap (auto-ranged
-colours, min/max markers, hover for a pixel's temperature). Like the reader it
+colours, min/max markers with temperatures, hover for a pixel's temperature). Like the reader it
 uses `uv` to fetch its dependencies (pyserial, numpy, matplotlib).
 
 ```sh
@@ -49,6 +49,9 @@ tools/mlx_view.py --vmin 15 --vmax 40      # fixed colour range
 tools/mlx_view.py --flip-h --rotate 180    # orient to match the camera mounting
 tools/mlx_view.py --snapshot frame.png     # headless: save a PNG and exit
 ```
+
+The image is mirrored left/right by default (like looking in a mirror when the
+camera faces you); `--flip-h` shows the sensor's native orientation instead.
 
 It needs a GUI display (run it from the desktop session, or with X forwarding).
 
