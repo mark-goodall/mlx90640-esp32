@@ -5,7 +5,7 @@
 #     "pyserial>=3.5",
 # ]
 # ///
-"""Read binary MLX90640 frames from the ESP32 and print them as CSV.
+"""Read binary MLX90640 frames from the ESP32-C3 and print them as CSV.
 
 Each frame is printed as 24 lines of 32 comma-separated temperatures (deg C),
 followed by a blank line. Status messages from the device go to stderr.
@@ -42,7 +42,7 @@ def crc16(data, crc=0xFFFF):
 
 class PacketReader:
     """Extracts (type, payload) packets from a byte stream, resyncing on
-    garbage such as the ESP32 bootloader's 115200-baud boot messages."""
+    garbage such as the ROM bootloader's boot messages."""
 
     def __init__(self):
         self.buf = bytearray()
@@ -101,7 +101,7 @@ def format_csv(temps, precision):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("port", nargs="?", default="/dev/ttyUSB0")
+    ap.add_argument("port", nargs="?", default="/dev/ttyACM0")
     ap.add_argument("-b", "--baud", type=int, default=921600)
     ap.add_argument("-n", "--frames", type=int, default=0, help="stop after N frames (0 = forever)")
     ap.add_argument("-o", "--output", help="write CSV to this file instead of stdout")

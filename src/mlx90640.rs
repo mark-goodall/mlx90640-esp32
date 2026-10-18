@@ -21,7 +21,7 @@ const EEPROM_WORDS: usize = 832;
 /// 768 pixel words followed by 64 auxiliary words.
 const RAM_WORDS: usize = 832;
 /// Words read per I2C transaction.
-const CHUNK_WORDS: usize = 14;
+const CHUNK_WORDS: usize = 64;
 /// Attempts per I2C transaction before giving up. The sensor briefly stops
 /// responding while it updates RAM at the end of each sub-page, so failed
 /// transactions are retried after `RETRY_DELAY_US`.
@@ -221,10 +221,10 @@ impl<I: I2c, D: DelayNs> Mlx90640<I, D> {
         let mut polls = 0u32;
         while self.read_word(REG_STATUS)? & 0x0008 == 0 {
             polls += 1;
-            if polls > 5000 {
+            if polls > 50_000 {
                 return Err(Error::Timeout);
             }
-            self.delay.delay_ms(5);
+            self.delay.delay_us(500);
         }
 
         // Re-read if the sensor started overwriting RAM while we were reading.
@@ -383,7 +383,8 @@ impl<I: I2c, D: DelayNs> Mlx90640<I, D> {
     }
 
     #[allow(clippy::needless_range_loop, reason = "px indexes several parallel arrays")]
-    fn calculate_to(&mut self, control: u16, subpage: u8, emissivity: f32) {
+    #[doc(hidden)]
+    pub fn calculate_to(&mut self, control: u16, subpage: u8, emissivity: f32) {
         let vdd = self.vdd(control);
         let ta = self.ta(vdd);
         self.ambient = ta;

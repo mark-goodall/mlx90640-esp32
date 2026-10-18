@@ -1,4 +1,2 @@
 # Keep user/runtime configuration values in this file.
 [env]
-# This board has an ESP32 rev 1.0 (esp-hal defaults to requiring rev 3.0).
-ESP_HAL_CONFIG_MIN_CHIP_REVISION = "100"

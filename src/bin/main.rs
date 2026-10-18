@@ -16,7 +16,7 @@ use esp_hal::i2c::master::{Config as I2cConfig, I2c};
 use esp_hal::main;
 use esp_hal::time::{Instant, Rate};
 use esp_hal::Blocking;
-use esp_hal::uart::{Config as UartConfig, Uart};
+use esp_hal::usb::usb_serial_jtag::UsbSerialJtag;
 use mlx90640_esp32::mlx90640::{DEFAULT_ADDRESS, Mlx90640, RefreshRate};
 use mlx90640_esp32::protocol::{self, FRAME_PAYLOAD_LEN, FrameInfo, TYPE_FRAME, TYPE_TEXT};
 
@@ -24,26 +24,31 @@ use mlx90640_esp32::protocol::{self, FRAME_PAYLOAD_LEN, FrameInfo, TYPE_FRAME, T
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-/// Serial baud rate for binary output (UART0, the USB-serial bridge).
-const BAUD: u32 = 921_600;
 /// Sub-page rate; complete frames are output at half this rate.
-const REFRESH: RefreshRate = RefreshRate::Hz4;
+const REFRESH: RefreshRate = RefreshRate::Hz16;
 const EMISSIVITY: f32 = 0.95;
 
-fn write_all(serial: &mut Uart<'_, Blocking>, mut data: &[u8]) {
-    while !data.is_empty() {
-        match serial.write(data) {
-            Ok(n) => data = &data[n..],
-            Err(_) => return,
+type Serial<'d> = UsbSerialJtag<'d, Blocking>;
+
+/// Writes bytes, giving up if the host stops reading for 100 ms (e.g. no
+/// program has the port open) so the sensor loop keeps running.
+fn write_all(serial: &mut Serial<'_>, data: &[u8]) {
+    for &b in data {
+        let start = Instant::now();
+        while serial.write_byte_nb(b).is_err() {
+            if start.elapsed().as_millis() > 100 {
+                return;
+            }
         }
     }
 }
 
-fn send_packet(serial: &mut Uart<'_, Blocking>, kind: u8, payload: &[u8]) {
+fn send_packet(serial: &mut Serial<'_>, kind: u8, payload: &[u8]) {
     let (header, crc) = protocol::wrap(kind, payload);
     write_all(serial, &header);
     write_all(serial, payload);
     write_all(serial, &crc);
+    serial.flush_tx_nb().ok();
 }
 
 /// Fixed-size buffer for formatting text messages; overflow is truncated.
@@ -61,7 +66,7 @@ impl Write for TextBuf {
     }
 }
 
-fn send_text(serial: &mut Uart<'_, Blocking>, args: fmt::Arguments) {
+fn send_text(serial: &mut Serial<'_>, args: fmt::Arguments) {
     let mut text = TextBuf { buf: [0; 128], len: 0 };
     text.write_fmt(args).ok();
     send_packet(serial, TYPE_TEXT, &text.buf[..text.len]);
@@ -74,25 +79,23 @@ fn send_text(serial: &mut Uart<'_, Blocking>, args: fmt::Arguments) {
 #[main]
 fn main() -> ! {
     // generator version: 1.4.0
-    // generator parameters: -o esp32 -o esp-backtrace
+    // generator parameters: -o esp32c3 -o esp-backtrace
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     let delay = Delay::new();
 
-    let mut serial = Uart::new(peripherals.UART0, UartConfig::default().with_baudrate(BAUD))
-        .unwrap()
-        .with_tx(peripherals.GPIO1)
-        .with_rx(peripherals.GPIO3);
+    // The C3's built-in USB-Serial-JTAG (/dev/ttyACM*); no baud rate applies.
+    let mut serial = UsbSerialJtag::new(peripherals.USB_DEVICE);
 
-    // Standard ESP32 dev board I2C pins: SDA = GPIO21, SCL = GPIO22.
+    // Common ESP32-C3 board I2C pins: SDA = GPIO8, SCL = GPIO9.
     let i2c = I2c::new(
         peripherals.I2C0,
-        I2cConfig::default().with_frequency(Rate::from_khz(400)),
+        I2cConfig::default().with_frequency(Rate::from_khz(1000)),
     )
     .unwrap()
-    .with_sda(peripherals.GPIO21)
-    .with_scl(peripherals.GPIO22);
+    .with_sda(peripherals.GPIO8)
+    .with_scl(peripherals.GPIO9);
 
     let mut sensor = Mlx90640::new(i2c, delay, DEFAULT_ADDRESS);
     while let Err(e) = sensor
